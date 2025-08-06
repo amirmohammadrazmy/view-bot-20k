@@ -1,32 +1,128 @@
 import asyncio
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from fake_useragent import UserAgent
 
+# --- کلاس مدیر مرورگر ---
+# این کلاس مسئولیت تمام تعاملات با مرورگر (مانند باز کردن، ناوبری، کلیک و بستن) را بر عهده دارد.
+# استفاده از این کلاس باعث می‌شود کدهای اصلی تمیزتر و مدیریت عملیات مرورگر متمرکز باشد.
 class BrowserManager:
     def __init__(self, agent_id, proxy=None):
+        """
+        سازنده کلاس
+
+        Args:
+            agent_id (int): شناسه ایجنت برای استفاده در لاگ‌ها.
+            proxy (str, optional): آدرس پراکسی برای استفاده در مرورگر. مثال: "http://user:pass@host:port"
+        """
         self.agent_id = agent_id
         self.proxy = proxy
-        self.ua = UserAgent()
+        # کتابخانه fake_useragent یک User-Agent تصادفی و معتبر برای ما ایجاد می‌کند تا شناسایی نشویم.
+        # توجه: اولین اجرای این دستور ممکن است به دلیل نیاز به دانلود لیست، کمی طول بکشد.
+        self.user_agent = UserAgent().random
+        self.playwright = None
+        self.browser = None
+        print(f"✔️ ایجنت {self.agent_id}: مدیر مرورگر با User-Agent زیر ساخته شد:\n{self.user_agent}")
 
     async def start(self):
-        self.p = await async_playwright().start()
-        browser = await self.p.chromium.launch(
-            headless=True,
-            args=['--no-sandbox', '--disable-setuid-sandbox']
-        )
-        context = await browser.new_context(
-            user_agent=self.ua.random,
-            viewport={'width': 1280, 'height': 720}
-        )
-        page = await context.new_page()
-        return browser, page, context
+        """
+        مرورگر را راه‌اندازی کرده و یک صفحه جدید ایجاد می‌کند.
+        این متد باید در ابتدای هر تسک فراخوانی شود.
+        """
+        try:
+            print(f"⏳ ایجنت {self.agent_id}: در حال راه‌اندازی Playwright و مرورگر Chromium...")
+            self.playwright = await async_playwright().start()
+
+            launch_options = {
+                'headless': True,
+                'args': ['--no-sandbox', '--disable-setuid-sandbox']
+            }
+
+            # اگر پراکسی در تنظیمات وجود داشت، آن را به مرورگر اعمال می‌کنیم.
+            if self.proxy:
+                launch_options['proxy'] = {
+                    'server': self.proxy
+                }
+                print(f"ℹ️ ایجنت {self.agent_id}: از پراکسی {self.proxy} استفاده خواهد شد.")
+
+            self.browser = await self.playwright.chromium.launch(**launch_options)
+
+            context = await self.browser.new_context(
+                user_agent=self.user_agent,
+                viewport={'width': 1920, 'height': 1080}
+            )
+
+            page = await context.new_page()
+            print(f"✅ ایجنت {self.agent_id}: مرورگر با موفقیت راه‌اندازی شد و صفحه جدید آماده است.")
+            return page, context
+
+        except Exception as e:
+            print(f"❌ ایجنت {self.agent_id}: خطای بحرانی در زمان راه‌اندازی مرورگر: {e}")
+            # در صورت بروز خطا، منابع را آزاد می‌کنیم.
+            await self.shutdown()
+            return None, None
 
     async def navigate(self, page, url):
-        await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+        """
+        به یک URL جدید در صفحه مشخص شده می‌رود.
 
-    async def click(self, page, selector):
-        await page.wait_for_selector(selector, timeout=10000)
-        await page.click(selector)
+        Args:
+            page: نمونه صفحه‌ای که توسط متد start ایجاد شده.
+            url (str): آدرس وب‌سایتی که باید باز شود.
 
-    async def close(self, browser):
-        await browser.close()
+        Returns:
+            bool: در صورت موفقیت True و در غیر این صورت False را برمی‌گرداند.
+        """
+        print(f"⏳ ایجنت {self.agent_id}: در حال ناوبری به آدرس: {url}")
+        try:
+            # منتظر می‌مانیم تا ساختار اولیه صفحه (DOM) لود شود.
+            await page.goto(url, wait_until='domcontentloaded', timeout=45000)
+            print(f"✅ ایجنت {self.agent_id}: ناوبری به {url} با موفقیت انجام شد.")
+            return True
+        except PlaywrightTimeoutError:
+            print(f"❌ ایجنت {self.agent_id}: خطای Timeout! صفحه {url} در زمان مشخص شده بارگذاری نشد.")
+            return False
+        except Exception as e:
+            print(f"❌ ایجنت {self.agent_id}: خطای نامشخص در زمان ناوبری به {url}: {e}")
+            return False
+
+    async def click(self, page, selector, timeout=15000):
+        """
+        روی یک عنصر در صفحه کلیک می‌کند.
+
+        Args:
+            page: نمونه صفحه‌ای که در آن عملیات انجام می‌شود.
+            selector (str): انتخابگر CSS یا XPath برای پیدا کردن عنصر.
+            timeout (int): حداکثر زمان انتظار برای پیدا شدن عنصر (به میلی‌ثانیه).
+
+        Returns:
+            bool: در صورت موفقیت True و در غیر این صورت False را برمی‌گرداند.
+        """
+        print(f"⏳ ایجنت {self.agent_id}: در حال تلاش برای کلیک روی عنصر: '{selector}'")
+        try:
+            # ابتدا منتظر می‌مانیم تا عنصر در صفحه ظاهر شود.
+            await page.wait_for_selector(selector, state='visible', timeout=timeout)
+            # سپس روی آن کلیک می‌کنیم.
+            await page.click(selector)
+            print(f"✅ ایجنت {self.agent_id}: کلیک روی '{selector}' با موفقیت انجام شد.")
+            return True
+        except PlaywrightTimeoutError:
+            print(f"❌ ایجنت {self.agent_id}: خطای Timeout! عنصر '{selector}' در زمان مشخص شده پیدا نشد.")
+            return False
+        except Exception as e:
+            print(f"❌ ایجنت {self.agent_id}: خطای نامشخص در زمان کلیک روی '{selector}': {e}")
+            return False
+
+    async def shutdown(self):
+        """
+        مرورگر و Playwright را به درستی می‌بندد تا منابع آزاد شوند.
+        این متد باید در انتهای هر تسک فراخوانی شود.
+        """
+        print(f"⏳ ایجنت {self.agent_id}: در حال بستن مرورگر و آزادسازی منابع...")
+        try:
+            if self.browser and not self.browser.is_closed():
+                await self.browser.close()
+            if self.playwright:
+                await self.playwright.stop()
+            print(f"✅ ایجنت {self.agent_id}: مرورگر با موفقیت بسته شد.")
+        except Exception as e:
+            print(f"❌ ایجنت {self.agent_id}: خطایی در زمان بستن مرورگر رخ داد: {e}")
