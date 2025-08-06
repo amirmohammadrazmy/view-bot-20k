@@ -1,7 +1,6 @@
 # This configuration tells Railway how to build and deploy the project.
 # It defines 4 separate services, one for each agent.
-# You can use this as a reference to configure your project in the Railway dashboard,
-# or if your Railway plan supports it, this file might configure it automatically.
+# The `-u` flag is added to the python command to ensure unbuffered output for real-time logging.
 
 [build]
 # All services will use the same Dockerfile to build the environment.
@@ -15,19 +14,19 @@ restartPolicyType = "ON_FAILURE"
 # Define the first agent as a service.
 [[services]]
 name = "agent-1"
-startCommand = "python main.py --agent-id 1"
+startCommand = "python -u main.py --agent-id 1"
 
 # Define the second agent as a service.
 [[services]]
 name = "agent-2"
-startCommand = "python main.py --agent-id 2"
+startCommand = "python -u main.py --agent-id 2"
 
 # Define the third agent as a service.
 [[services]]
 name = "agent-3"
-startCommand = "python main.py --agent-id 3"
+startCommand = "python -u main.py --agent-id 3"
 
 # Define the fourth agent as a service.
 [[services]]
 name = "agent-4"
-startCommand = "python main.py --agent-id 4"
+startCommand = "python -u main.py --agent-id 4"

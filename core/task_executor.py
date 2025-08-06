@@ -7,12 +7,27 @@ class TaskExecutor:
         self.agent_id = agent_id
 
     async def run_daily_tasks(self):
-        with open('data/links.txt') as f:
-            links = [l.strip() for l in f if l.strip()]
+        print(f"Agent {self.agent_id}: Reading links from data/links.txt")
+        try:
+            with open('data/links.txt') as f:
+                links = [l.strip() for l in f if l.strip()]
+        except FileNotFoundError:
+            print(f"❌ Agent {self.agent_id}: Error - data/links.txt not found.")
+            return
+
+        if not links:
+            print(f"⚠️ Agent {self.agent_id}: data/links.txt is empty. No tasks to run.")
+            return
 
         start = (self.agent_id - 1) * 50
         end = start + 50
         agent_links = links[start:end]
+
+        if not agent_links:
+            print(f"ℹ️ Agent {self.agent_id}: No links assigned for this agent ID. (Links count: {len(links)})")
+            return
+
+        print(f"ℹ️ Agent {self.agent_id}: Assigned {len(agent_links)} links.")
 
         for url in agent_links:
             print(f"🔍 Agent {self.agent_id} processing: {url}")
