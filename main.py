@@ -2,6 +2,7 @@ import asyncio
 import argparse
 import os
 from core.task_executor import TaskExecutor
+from core.proxy_manager import fetch_proxies
 
 # --- نقطه شروع اصلی برنامه (Entrypoint) ---
 async def main():
@@ -9,9 +10,11 @@ async def main():
     این تابع اصلی برنامه است که هنگام اجرای اسکریپت فراخوانی می‌شود.
     وظیفه آن، خواندن آرگومان‌های ورودی (ID ایجنت) و شروع به کار TaskExecutor است.
     """
+    # در ابتدای کار، لیست پراکسی‌ها را از API دریافت می‌کنیم.
+    await fetch_proxies()
+
     # یک پارسر برای خواندن آرگومان‌های خط فرمان (command-line) ایجاد می‌کنیم.
     parser = argparse.ArgumentParser(description="ربات پردازشگر لینک‌ها")
-
     # آرگومان agent-id-- را تعریف می‌کنیم. این آرگومان مشخص می‌کند که کدام ایجنت باید اجرا شود.
     # مقدار پیش‌فرض آن از متغیر محیطی AGENT_ID خوانده می‌شود و اگر آن هم وجود نداشت، ۱ خواهد بود.
     parser.add_argument(

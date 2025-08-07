@@ -1,6 +1,7 @@
 import asyncio
 import random
 from core.browser_manager import BrowserManager
+from core.proxy_manager import get_next_proxy
 
 # --- کلاس اجرا کننده تسک ---
 # این کلاس وظیفه مدیریت و اجرای تسک‌های اصلی هر ایجنت را بر عهده دارد.
@@ -35,8 +36,11 @@ class TaskExecutor:
             print(f"\n--- شروع پردازش لینک {i+1} از {len(links)} ---")
             print(f"🔗 ایجنت {self.agent_id}: در حال پردازش URL: {url}")
 
-            # برای هر لینک یک مرورگر جدید باز می‌کنیم تا از تداخل و مشکلات حافظه جلوگیری شود.
-            bm = BrowserManager(self.agent_id)
+            # یک پراکسی از مدیر پراکسی دریافت می‌کنیم.
+            current_proxy = get_next_proxy()
+
+            # برای هر لینک یک مرورگر جدید با پراکسی مشخص باز می‌کنیم.
+            bm = BrowserManager(self.agent_id, proxy=current_proxy)
             try:
                 # اجرای فرآیند اصلی برای یک لینک
                 await self._process_single_link(bm, url)
