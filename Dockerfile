@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+
+# Cache-busting comment to force re-run of pip install
 RUN pip install --no-cache-dir -r requirements.txt && \
     playwright install chromium --with-deps
 
