@@ -6,6 +6,7 @@ from core.proxy_manager import fetch_and_validate_proxies
 
 # --- نقطه شروع اصلی برنامه (Entrypoint) ---
 async def main():
+    print("--- DEBUG: main() function started. ---")
     """
     این تابع اصلی برنامه است که هنگام اجرای اسکریپت فراخوانی می‌شود.
     وظیفه آن، خواندن آرگومان‌های ورودی (ID ایجنت) و شروع به کار TaskExecutor است.

@@ -34,6 +34,7 @@ async def _validate_proxy(proxy):
     return None
 
 async def fetch_and_validate_proxies():
+    print("--- DEBUG: fetch_and_validate_proxies() function started. ---")
     """
     پراکسی‌ها را از API دریافت کرده، آن‌ها را تست می‌کند و پراکسی‌های سالم را در حافظه ذخیره می‌نماید.
     """
