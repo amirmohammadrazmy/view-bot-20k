@@ -112,6 +112,38 @@ class BrowserManager:
             print(f"❌ ایجنت {self.agent_id}: خطای نامشخص در زمان کلیک روی '{selector}': {e}")
             return False
 
+    async def check_for_captcha(self, page):
+        """
+        بررسی می‌کند که آیا در صفحه عنصر کپچا وجود دارد یا خیر.
+        از یک timeout کوتاه استفاده می‌کند تا سرعت کلی فرآیند کم نشود.
+
+        Returns:
+            bool: اگر کپچا پیدا شود True، در غیر این صورت False.
+        """
+        # لیست انتخابگرهای رایج برای انواع کپچا
+        captcha_selectors = [
+            'iframe[src*="recaptcha"]',  # Google reCAPTCHA
+            'iframe[src*="hcaptcha"]',   # hCaptcha
+            'div#cf-turnstile',          # Cloudflare Turnstile
+            'div.g-recaptcha',           # Div عمومی reCAPTCHA
+        ]
+
+        print(f"🕵️ ایجنت {self.agent_id}: در حال بررسی صفحه برای شناسایی کپچا...")
+        for selector in captcha_selectors:
+            try:
+                # با یک timeout کوتاه بررسی می‌کنیم تا معطل نشویم.
+                if await page.is_visible(selector, timeout=1000):
+                    print(f"⚠️ ایجنت {self.agent_id}: کپچا با انتخابگر '{selector}' شناسایی شد!")
+                    return True
+            except PlaywrightTimeoutError:
+                # اگر عنصر پیدا نشد، این خطا رخ می‌دهد که طبیعی است.
+                continue
+            except Exception:
+                # خطاهای دیگر هم نادیده گرفته می‌شوند.
+                continue
+
+        return False
+
     async def shutdown(self):
         """
         مرورگر و Playwright را به درستی می‌بندد تا منابع آزاد شوند.
@@ -119,7 +151,7 @@ class BrowserManager:
         """
         print(f"⏳ ایجنت {self.agent_id}: در حال بستن مرورگر و آزادسازی منابع...")
         try:
-            if self.browser and not self.browser.is_closed():
+            if self.browser and self.browser.is_connected():
                 await self.browser.close()
             if self.playwright:
                 await self.playwright.stop()

@@ -99,7 +99,12 @@ class TaskExecutor:
         print("⏳ ایجنت در حال انتظار برای لود شدن صفحه پس از کلیک اول (۱۱ ثانیه)...")
         await asyncio.sleep(11)
 
-        # مرحله ۴: کلیک دوم
+        # مرحله ۴: بررسی وجود کپچا قبل از کلیک نهایی
+        if await browser_manager.check_for_captcha(page):
+            # اگر کپچا پیدا شد، این تسک را رها کرده و به سراغ بعدی می‌رویم.
+            return
+
+        # مرحله ۵: کلیک دوم
         if not await browser_manager.click(page, '.get-link'):
             print(f"❌ ایجنت {self.agent_id}: کلیک دوم (.get-link) شکست خورد.")
             return
