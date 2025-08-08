@@ -148,7 +148,8 @@ class TaskExecutor {
                 console.error(`🔥 خطای فاجعه‌بار برای ایجنت ${this.agentId} در URL ${url}: ${error.message}`);
             } finally {
                 await bm.shutdown();
-                const sleepTime = Math.random() * (7 - 3) + 3;
+                // یک وقفه کوتاه و تصادفی (بین ۱ تا ۲.۵ ثانیه) برای جلوگیری از شناسایی شدن.
+                const sleepTime = Math.random() * 1.5 + 1;
                 console.log(`--- پایان پردازش لینک. استراحت برای ${sleepTime.toFixed(2)} ثانیه ---`);
                 await new Promise(res => setTimeout(res, sleepTime * 1000));
             }
