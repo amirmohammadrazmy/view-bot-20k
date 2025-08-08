@@ -177,30 +177,58 @@ class TaskExecutor {
     }
 
     /**
-     * فرآیند کامل کار روی یک URL را انجام می‌دهد.
+     * فرآیند کامل کار روی یک URL را بر اساس گردش کار جدید انجام می‌دهد.
      */
     async _processSingleLink(browserManager, url) {
         const page = await browserManager.start();
         if (!page) return;
 
+        // مرحله ۱: ناوبری اولیه
         if (!await browserManager.navigate(page, url)) return;
-        await new Promise(res => setTimeout(res, Math.random() * 2000 + 2000));
 
-        if (!await browserManager.click(page, '#invisibleCaptchaShortlink')) return;
+        // مرحله ۲: کلیک اول روی دکمه "برای ادامه اینجا کلیک کنید"
+        console.log("--- مرحله ۱: کلیک روی دکمه ادامه ---");
+        if (!await browserManager.click(page, 'button#cntn')) return;
 
-        console.log("⏳ ایجنت در حال انتظار برای لود شدن صفحه پس از کلیک اول (۱۱ ثانیه)...");
-        await new Promise(res => setTimeout(res, 11000));
+        // منتظر می‌مانیم تا صفحه جدید پس از کلیک بارگذاری شود.
+        try {
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
+            console.log("✔️ صفحه جدید با موفقیت بارگذاری شد.");
+        } catch (error) {
+            console.error("❌ صفحه جدید پس از کلیک اول بارگذاری نشد. احتمالاً لینک خراب است.");
+            return;
+        }
 
-        // ابتدا برای کلیک دوم تلاش می‌کنیم.
-        const secondClickSuccess = await browserManager.click(page, '.get-link');
+        // مرحله ۳: کلیک دوم روی دکمه کپچا
+        console.log("--- مرحله ۲: کلیک روی دکمه کپچا ---");
+        if (!await browserManager.click(page, 'button#invisibleCaptchaShortlink')) return;
 
-        // اگر کلیک دوم شکست خورد، آنگاه بررسی می‌کنیم که آیا کپچا دلیل آن بوده است یا خیر.
-        if (!secondClickSuccess) {
-            console.log("⚠️ کلیک دوم ناموفق بود. بررسی برای وجود کپچا...");
-            if (await browserManager.checkForCaptcha(page)) {
-                console.log("نتیجه: کپچا به احتمال زیاد مانع از ادامه کار شده است.");
-            }
-            return; // تسک را در هر صورت متوقف می‌کنیم.
+        console.log("⏳ ایجنت در حال انتظار (۵ ثانیه) برای بررسی احتمال ظهور کپچای فعال...");
+        await new Promise(res => setTimeout(res, 5000));
+
+        // مرحله ۴: بررسی هوشمند کپچا
+        if (await browserManager.checkForCaptcha(page)) {
+            console.log("نتیجه: کپچای فعال شناسایی شد. این لینک رها می‌شود.");
+            return;
+        }
+        console.log("✔️ کپچای فعالی مشاهده نشد. ادامه فرآیند...");
+
+        // مرحله ۵: کلیک نهایی برای دریافت لینک دانلود
+        console.log("--- مرحله ۳: تلاش برای یافتن و کلیک روی لینک نهایی ---");
+        const finalLinkSelector = 'a ::-p-text(دریافت لینک)';
+        try {
+            await page.waitForSelector(finalLinkSelector, { visible: true, timeout: 20000 });
+            // به جای کلیک، آدرس لینک را استخراج می‌کنیم که هدف نهایی است.
+            const downloadLink = await page.$eval(finalLinkSelector, el => el.href);
+            console.log("🎉🎉🎉 لینک نهایی با موفقیت پیدا شد! 🎉🎉🎉");
+            console.log(`🔗 لینک دانلود: ${downloadLink}`);
+
+            // میتوانید اینجا لینک را در یک فایل ذخیره کنید
+            // await fs.appendFile('download_links.txt', downloadLink + '\n');
+
+        } catch (error) {
+            console.error(`❌ لینک نهایی "دریافت لینک" پیدا نشد. ${error.message}`);
+            return;
         }
 
         console.log(`✅ ایجنت ${this.agentId}: پردازش URL ${url} با موفقیت کامل شد.`);
