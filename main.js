@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs/promises');
 const path = require('path');
+const UserAgent = require('user-agents');
 const { fetchAndValidateProxies, getNextProxy } = require('./proxyManager');
 
 // --- کلاس مدیر مرورگر (مبتنی بر Puppeteer) ---
@@ -10,7 +11,9 @@ class BrowserManager {
         this.agentId = agentId;
         this.proxy = proxy;
         this.browser = null;
-        console.log(`✔️ ایجنت ${this.agentId}: مدیر مرورگر آماده شد.`);
+        // یک User-Agent واقعی و تصادفی برای مخفی کردن ربات ایجاد می‌کنیم.
+        this.userAgent = new UserAgent({ deviceCategory: 'desktop' });
+        console.log(`✔️ ایجنت ${this.agentId}: مدیر مرورگر با User-Agent زیر آماده شد:\n${this.userAgent.toString()}`);
         if (this.proxy) {
             console.log(`ℹ️ ایجنت ${this.agentId}: از پراکسی ${this.proxy} استفاده خواهد شد.`);
         }
@@ -33,6 +36,8 @@ class BrowserManager {
             });
 
             const page = await this.browser.newPage();
+            // User-Agent صفحه را برای جلوگیری از شناسایی شدن، تغییر می‌دهیم.
+            await page.setUserAgent(this.userAgent.toString());
             await page.setViewport({ width: 1920, height: 1080 });
             console.log(`✅ ایجنت ${this.agentId}: مرورگر با موفقیت راه‌اندازی شد.`);
             return page;
@@ -68,7 +73,7 @@ class BrowserManager {
         try {
             await page.waitForSelector(selector, { visible: true, timeout });
             await page.click(selector);
-            console.log(`✅ ایجنت ${this.agentId}: کلیک روی '{selector}' با موفقیت انجام شد.`);
+            console.log(`✅ ایجنت ${this.agentId}: کلیک روی '${selector}' با موفقیت انجام شد.`);
             return true;
         } catch (error) {
             console.error(`❌ ایجنت ${this.agentId}: خطای کلیک روی '${selector}': ${error.message}`);
@@ -172,23 +177,59 @@ class TaskExecutor {
     }
 
     /**
-     * فرآیند کامل کار روی یک URL را انجام می‌دهد.
+     * فرآیند کامل کار روی یک URL را بر اساس گردش کار جدید انجام می‌دهد.
      */
     async _processSingleLink(browserManager, url) {
         const page = await browserManager.start();
         if (!page) return;
 
+        // مرحله ۱: ناوبری اولیه
         if (!await browserManager.navigate(page, url)) return;
-        await new Promise(res => setTimeout(res, Math.random() * 2000 + 2000));
 
-        if (!await browserManager.click(page, '#invisibleCaptchaShortlink')) return;
+        // مرحله ۲: کلیک اول روی دکمه "برای ادامه اینجا کلیک کنید"
+        console.log("--- مرحله ۱: کلیک روی دکمه ادامه ---");
+        if (!await browserManager.click(page, 'button#cntn')) return;
 
-        console.log("⏳ ایجنت در حال انتظار برای لود شدن صفحه پس از کلیک اول (۱۱ ثانیه)...");
-        await new Promise(res => setTimeout(res, 11000));
+        // منتظر می‌مانیم تا صفحه جدید پس از کلیک بارگذاری شود.
+        try {
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
+            console.log("✔️ صفحه جدید با موفقیت بارگذاری شد.");
+        } catch (error) {
+            console.error("❌ صفحه جدید پس از کلیک اول بارگذاری نشد. احتمالاً لینک خراب است.");
+            return;
+        }
 
-        if (await browserManager.checkForCaptcha(page)) return;
+        // مرحله ۳: کلیک دوم روی دکمه کپچا
+        console.log("--- مرحله ۲: کلیک روی دکمه کپچا ---");
+        if (!await browserManager.click(page, 'button#invisibleCaptchaShortlink')) return;
 
-        if (!await browserManager.click(page, '.get-link')) return;
+        console.log("⏳ ایجنت در حال انتظار (۵ ثانیه) برای بررسی احتمال ظهور کپچای فعال...");
+        await new Promise(res => setTimeout(res, 5000));
+
+        // مرحله ۴: بررسی هوشمند کپچا
+        if (await browserManager.checkForCaptcha(page)) {
+            console.log("نتیجه: کپچای فعال شناسایی شد. این لینک رها می‌شود.");
+            return;
+        }
+        console.log("✔️ کپچای فعالی مشاهده نشد. ادامه فرآیند...");
+
+        // مرحله ۵: کلیک نهایی برای دریافت لینک دانلود
+        console.log("--- مرحله ۳: تلاش برای یافتن و کلیک روی لینک نهایی ---");
+        const finalLinkSelector = 'a ::-p-text(دریافت لینک)';
+        try {
+            await page.waitForSelector(finalLinkSelector, { visible: true, timeout: 20000 });
+            // به جای کلیک، آدرس لینک را استخراج می‌کنیم که هدف نهایی است.
+            const downloadLink = await page.$eval(finalLinkSelector, el => el.href);
+            console.log("🎉🎉🎉 لینک نهایی با موفقیت پیدا شد! 🎉🎉🎉");
+            console.log(`🔗 لینک دانلود: ${downloadLink}`);
+
+            // میتوانید اینجا لینک را در یک فایل ذخیره کنید
+            // await fs.appendFile('download_links.txt', downloadLink + '\n');
+
+        } catch (error) {
+            console.error(`❌ لینک نهایی "دریافت لینک" پیدا نشد. ${error.message}`);
+            return;
+        }
 
         console.log(`✅ ایجنت ${this.agentId}: پردازش URL ${url} با موفقیت کامل شد.`);
     }
