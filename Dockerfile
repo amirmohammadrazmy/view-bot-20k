@@ -50,9 +50,10 @@ RUN apt-get update && apt-get install -y \
 # Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
-# Install app dependencies
-# The `npm ci` command is generally recommended for CI/CD environments as it's faster and stricter than `npm install`.
-RUN npm ci
+# Install app dependencies.
+# We use `npm install` here because it generates a `package-lock.json` if one doesn't exist.
+# `npm ci` would fail in this case.
+RUN npm install
 
 # Bundle app source
 COPY . .
