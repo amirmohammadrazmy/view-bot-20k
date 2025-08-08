@@ -43,6 +43,7 @@ async function validateProxy(proxy) {
  */
 async function fetchAndValidateProxies() {
     console.log("⏳ در حال دریافت لیست پراکسی‌های خام از API...");
+    let formattedProxies = []; // تعریف متغیر در ابتدای تابع برای جلوگیری از خطا
     try {
         const response = await axios.get(PROXY_API_URL, { timeout: 20000 });
         const rawProxies = response.data.trim().split('\r\n').filter(p => p);
