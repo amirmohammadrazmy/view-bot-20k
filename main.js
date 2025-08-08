@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs/promises');
 const path = require('path');
+const UserAgent = require('user-agents');
 const { fetchAndValidateProxies, getNextProxy } = require('./proxyManager');
 
 // --- کلاس مدیر مرورگر (مبتنی بر Puppeteer) ---
@@ -10,7 +11,9 @@ class BrowserManager {
         this.agentId = agentId;
         this.proxy = proxy;
         this.browser = null;
-        console.log(`✔️ ایجنت ${this.agentId}: مدیر مرورگر آماده شد.`);
+        // یک User-Agent واقعی و تصادفی برای مخفی کردن ربات ایجاد می‌کنیم.
+        this.userAgent = new UserAgent({ deviceCategory: 'desktop' });
+        console.log(`✔️ ایجنت ${this.agentId}: مدیر مرورگر با User-Agent زیر آماده شد:\n${this.userAgent.toString()}`);
         if (this.proxy) {
             console.log(`ℹ️ ایجنت ${this.agentId}: از پراکسی ${this.proxy} استفاده خواهد شد.`);
         }
@@ -33,6 +36,8 @@ class BrowserManager {
             });
 
             const page = await this.browser.newPage();
+            // User-Agent صفحه را برای جلوگیری از شناسایی شدن، تغییر می‌دهیم.
+            await page.setUserAgent(this.userAgent.toString());
             await page.setViewport({ width: 1920, height: 1080 });
             console.log(`✅ ایجنت ${this.agentId}: مرورگر با موفقیت راه‌اندازی شد.`);
             return page;
@@ -68,7 +73,7 @@ class BrowserManager {
         try {
             await page.waitForSelector(selector, { visible: true, timeout });
             await page.click(selector);
-            console.log(`✅ ایجنت ${this.agentId}: کلیک روی '{selector}' با موفقیت انجام شد.`);
+            console.log(`✅ ایجنت ${this.agentId}: کلیک روی '${selector}' با موفقیت انجام شد.`);
             return true;
         } catch (error) {
             console.error(`❌ ایجنت ${this.agentId}: خطای کلیک روی '${selector}': ${error.message}`);
@@ -186,9 +191,17 @@ class TaskExecutor {
         console.log("⏳ ایجنت در حال انتظار برای لود شدن صفحه پس از کلیک اول (۱۱ ثانیه)...");
         await new Promise(res => setTimeout(res, 11000));
 
-        if (await browserManager.checkForCaptcha(page)) return;
+        // ابتدا برای کلیک دوم تلاش می‌کنیم.
+        const secondClickSuccess = await browserManager.click(page, '.get-link');
 
-        if (!await browserManager.click(page, '.get-link')) return;
+        // اگر کلیک دوم شکست خورد، آنگاه بررسی می‌کنیم که آیا کپچا دلیل آن بوده است یا خیر.
+        if (!secondClickSuccess) {
+            console.log("⚠️ کلیک دوم ناموفق بود. بررسی برای وجود کپچا...");
+            if (await browserManager.checkForCaptcha(page)) {
+                console.log("نتیجه: کپچا به احتمال زیاد مانع از ادامه کار شده است.");
+            }
+            return; // تسک را در هر صورت متوقف می‌کنیم.
+        }
 
         console.log(`✅ ایجنت ${this.agentId}: پردازش URL ${url} با موفقیت کامل شد.`);
     }

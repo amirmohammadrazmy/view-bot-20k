@@ -19,17 +19,21 @@ let proxyIndex = 0;
  */
 async function validateProxy(proxy) {
     try {
+        const proxyUrl = new URL(proxy);
         // از متد HEAD استفاده می‌کنیم که سریع‌تر است چون محتوای صفحه را دانلود نمی‌کند.
         await axios.head(VALIDATION_URL, {
             proxy: {
-                host: proxy.split(':')[1].replace('//', ''),
-                port: parseInt(proxy.split(':')[2]),
+                protocol: proxyUrl.protocol.replace(':', ''),
+                host: proxyUrl.hostname,
+                port: parseInt(proxyUrl.port),
             },
             timeout: VALIDATION_TIMEOUT,
         });
+        // console.log(`✅ پراکسی سالم: ${proxy}`); // برای دیباگ می‌توانید این خط را فعال کنید
         return proxy;
     } catch (error) {
         // هرگونه خطای شبکه یا تایم‌اوت به معنی خراب بودن پراکسی است.
+        // console.log(`❌ پراکسی خراب: ${proxy}`); // برای دیباگ می‌توانید این خط را فعال کنید
         return null;
     }
 }
