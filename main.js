@@ -139,7 +139,15 @@ class TaskExecutor {
             console.log(`\n--- شروع پردازش لینک ${i + 1} از ${links.length} ---`);
             console.log(`🔗 ایجنت ${this.agentId}: در حال پردازش URL: ${url}`);
 
-            const proxy = getNextProxy();
+            // برای هر تسک، یک پراکسی سالم جدید دریافت می‌کنیم.
+            const proxy = await getNextProxy();
+            if (!proxy) {
+                console.error("❌ پراکسی سالمی برای ادامه کار پیدا نشد. تسک متوقف می‌شود.");
+                // اگر پراکسی وجود نداشته باشد، می‌توانیم یا کار را متوقف کنیم یا بدون پراکسی ادامه دهیم.
+                // در اینجا برای اطمینان کار را متوقف می‌کنیم.
+                continue;
+            }
+
             const bm = new BrowserManager(this.agentId, proxy);
 
             try {
@@ -243,8 +251,7 @@ async function main() {
     const agentIdArg = args.find(arg => arg.startsWith('--agent-id='));
     const agentId = agentIdArg ? parseInt(agentIdArg.split('=')[1]) : (process.env.AGENT_ID || 1);
 
-    console.log("--- شروع فرآیند دریافت و تست پراکسی‌ها ---");
-    await fetchAndValidateProxies();
+    // دیگر نیازی به فراخوانی اولیه پراکسی‌ها نیست، چون در لحظه نیاز دریافت می‌شوند.
 
     const executor = new TaskExecutor(agentId);
     await executor.runDailyTasks();
