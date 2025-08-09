@@ -1,26 +1,20 @@
 const axios = require('axios');
+const { URL } = require('url');
 
-// آدرس API برای دریافت پراکسی از ProxyScrape.
-// !!! توجه: این آدرس یک نمونه است. لطفاً آن را با آدرس API مخصوص خودتان از داشبورد ProxyScrape جایگزین کنید.
-const PROXY_API_URL = "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=elite";
+// آدرس API جدید برای دریافت پراکسی (PubProxy)
+// این API در هر درخواست یک پراکسی تصادفی برمی‌گرداند.
+const PROXY_API_URL = "http://pubproxy.com/api/proxy?format=txt&type=http&https-true&speed=25";
 
 // آدرسی که برای تست سلامت پراکسی‌ها استفاده می‌شود.
 const VALIDATION_URL = "https://2ad.ir/";
 const VALIDATION_TIMEOUT = 10000; // 10 ثانیه
 
-// لیست موقت برای نگهداری پراکسی‌های سالم و تست‌شده.
-let proxyCache = [];
-let proxyIndex = 0;
-
 /**
  * یک پراکسی را با اتصال به VALIDATION_URL تست می‌کند.
- * @param {string} proxy - پراکسی برای تست کردن (فرمت: http://ip:port)
- * @returns {Promise<string|null>} پراکسی در صورت سالم بودن، در غیر این صورت null.
  */
 async function validateProxy(proxy) {
     try {
         const proxyUrl = new URL(proxy);
-        // از متد HEAD استفاده می‌کنیم که سریع‌تر است چون محتوای صفحه را دانلود نمی‌کند.
         await axios.head(VALIDATION_URL, {
             proxy: {
                 protocol: proxyUrl.protocol.replace(':', ''),
@@ -29,69 +23,67 @@ async function validateProxy(proxy) {
             },
             timeout: VALIDATION_TIMEOUT,
         });
-        // console.log(`✅ پراکسی سالم: ${proxy}`); // برای دیباگ می‌توانید این خط را فعال کنید
-        return proxy;
+        return true; // پراکسی سالم است
     } catch (error) {
-        // هرگونه خطای شبکه یا تایم‌اوت به معنی خراب بودن پراکسی است.
-        // console.log(`❌ پراکسی خراب: ${proxy}`); // برای دیباگ می‌توانید این خط را فعال کنید
-        return null;
+        return false; // پراکسی خراب است
     }
 }
 
 /**
- * پراکسی‌ها را از API دریافت کرده، آن‌ها را تست می‌کند و پراکسی‌های سالم را در حافظه ذخیره می‌نماید.
+ * یک پراکسی سالم و تست‌شده از API دریافت می‌کند.
+ * این تابع تا زمانی که یک پراکسی سالم پیدا کند (یا به تعداد معینی تلاش کند) به کار خود ادامه می‌دهد.
+ * @param {number} maxRetries - حداکثر تعداد تلاش برای پیدا کردن پراکسی سالم.
+ * @returns {Promise<string|null>} یک پراکسی سالم یا null.
  */
+async function getHealthyProxy(maxRetries = 10) {
+    console.log("⏳ در حال تلاش برای یافتن یک پراکسی سالم...");
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            console.log(`--- تلاش شماره ${i + 1} از ${maxRetries} ---`);
+            // مرحله ۱: دریافت یک پراکسی از API
+            const response = await axios.get(PROXY_API_URL, { timeout: 15000 });
+            const proxyAddress = response.data.trim();
+            if (!proxyAddress) {
+                console.warn("⚠️ هشدار: API پراکسی آدرس خالی برگرداند. تلاش بعدی...");
+                continue;
+            }
+            const proxy = `http://${proxyAddress}`;
+            console.log(`✔️ پراکسی دریافت شد: ${proxy}. در حال تست سلامت...`);
+
+            // مرحله ۲: تست سلامت پراکسی
+            const isHealthy = await validateProxy(proxy);
+            if (isHealthy) {
+                console.log(`✅ پراکسی ${proxy} سالم و آماده استفاده است.`);
+                return proxy;
+            } else {
+                console.warn(`❌ پراکسی ${proxy} در تست سلامت رد شد. تلاش بعدی...`);
+            }
+        } catch (error) {
+            console.error(`❌ خطا در هنگام دریافت پراکسی از API: ${error.message}. تلاش بعدی...`);
+        }
+    }
+
+    console.error(`💀 پس از ${maxRetries} بار تلاش، هیچ پراکسی سالمی پیدا نشد.`);
+    return null;
+}
+
+
+// --- بازنویسی توابع اصلی برای سازگاری با ساختار جدید ---
+
+// این تابع اکنون یک مخزن پراکسی ایجاد کرده و آن را پر می‌کند.
 async function fetchAndValidateProxies() {
-    console.log("⏳ در حال دریافت لیست پراکسی‌های خام از API...");
-    let formattedProxies = []; // تعریف متغیر در ابتدای تابع برای جلوگیری از خطا
-    try {
-        const response = await axios.get(PROXY_API_URL, { timeout: 20000 });
-        const rawProxies = response.data.trim().split('\r\n').filter(p => p);
-
-        if (rawProxies.length === 0) {
-            console.warn("⚠️ هشدار: API پراکسی لیست خالی برگرداند.");
-            return;
-        }
-
-        const formattedProxies = rawProxies.map(p => `http://${p.trim()}`);
-        console.log(`✔️ تعداد ${formatted_proxies.length} پراکسی خام دریافت شد. شروع به تست سلامت پراکسی‌ها...`);
-
-        // تست کردن تمام پراکسی‌ها به صورت موازی برای افزایش سرعت
-        const validationPromises = formatted_proxies.map(validateProxy);
-        const results = await Promise.all(validationPromises);
-
-        const healthyProxies = results.filter(p => p !== null);
-
-        if (healthyProxies.length === 0) {
-            console.error("❌ تمام پراکسی‌های دریافت شده تست سلامت را رد کردند.");
-            return;
-        }
-
-        proxyCache = healthy_proxies;
-        proxyIndex = 0;
-        // پراکسی‌ها را به هم می‌ریزیم تا توزیع تصادفی باشد.
-        proxyCache.sort(() => Math.random() - 0.5);
-        console.log(`✅ تست کامل شد. تعداد ${proxyCache.length} پراکسی سالم و آماده استفاده است.`);
-
-    } catch (error) {
-        console.error(`❌ خطای فاجعه‌بار هنگام دریافت و تست پراکسی‌ها: ${error.message}`);
-    }
+    // این تابع دیگر به طور مستقیم استفاده نمی‌شود، اما برای حفظ ساختار آن را نگه می‌داریم.
+    // منطق اصلی به getHealthyProxy منتقل شده است.
+    console.log("سیستم پراکسی جدید: پراکسی‌ها به صورت تکی و در حین نیاز دریافت و تست می‌شوند.");
 }
 
-/**
- * یک پراکسی سالم از لیست ذخیره شده برمی‌گرداند.
- * @returns {string|null} یک پراکسی یا در صورت نبود پراکسی سالم، null.
- */
-function getNextProxy() {
-    if (proxyCache.length === 0) {
-        return null;
-    }
-    const proxy = proxyCache[proxyIndex];
-    proxyIndex = (proxyIndex + 1) % proxyCache.length;
-    return proxy;
+// این تابع اکنون یک پراکسی سالم جدید درخواست می‌کند.
+async function getNextProxy() {
+    // برای هر تسک یک پراکسی سالم جدید می‌گیریم.
+    return await getHealthyProxy();
 }
 
 module.exports = {
-    fetchAndValidateProxies,
+    fetchAndValidateProxies, // این تابع را برای سازگاری نگه می‌داریم
     getNextProxy,
 };
