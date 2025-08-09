@@ -5,27 +5,36 @@ const UserAgent = require('user-agents');
 const { fetchAndValidateProxies, getNextProxy } = require('./proxyManager');
 
 // --- کلاس مدیر مرورگر (مبتنی بر Puppeteer) ---
-// این کلاس مسئولیت تمام تعاملات با مرورگر را بر عهده دارد.
+// این کلاس مسئولیت تمام تعاملات با مرورگر را با قابلیت‌های پیشرفته ناشناس‌سازی بر عهده دارد.
 class BrowserManager {
     constructor(agentId, proxy) {
         this.agentId = agentId;
         this.proxy = proxy;
         this.browser = null;
         // یک User-Agent واقعی و تصادفی برای مخفی کردن ربات ایجاد می‌کنیم.
-        this.userAgent = new UserAgent({ deviceCategory: 'desktop' });
-        console.log(`✔️ ایجنت ${this.agentId}: مدیر مرورگر با User-Agent زیر آماده شد:\n${this.userAgent.toString()}`);
+        this.userAgent = new UserAgent({ deviceCategory: 'desktop' }).toString();
+        console.log(`✔️ ایجنت ${this.agentId}: مدیر مرورگر با User-Agent زیر آماده شد:\n${this.userAgent}`);
         if (this.proxy) {
             console.log(`ℹ️ ایجنت ${this.agentId}: از پراکسی ${this.proxy} استفاده خواهد شد.`);
         }
     }
 
     /**
-     * مرورگر را راه‌اندازی کرده و یک صفحه جدید ایجاد می‌کند.
+     * مرورگر را با تنظیمات پیشرفته برای جلوگیری از شناسایی، راه‌اندازی می‌کند.
      */
     async start() {
         try {
-            console.log(`⏳ ایجنت ${this.agentId}: در حال راه‌اندازی مرورگر Puppeteer...`);
-            const args = ['--no-sandbox', '--disable-setuid-sandbox'];
+            console.log(`⏳ ایجنت ${this.agentId}: در حال راه‌اندازی مرورگر پیشرفته Puppeteer...`);
+
+            const args = [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--incognito',
+                '--disable-extensions',
+                '--disable-plugins-discovery',
+                '--disable-default-apps',
+                '--window-size=1280,720',
+            ];
             if (this.proxy) {
                 args.push(`--proxy-server=${this.proxy}`);
             }
@@ -33,13 +42,32 @@ class BrowserManager {
             this.browser = await puppeteer.launch({
                 headless: true,
                 args: args,
+                // غیرفعال کردن برخی ویژگی‌های اتوماسیون که توسط سایت‌ها قابل شناسایی است
+                ignoreDefaultArgs: ['--enable-automation'],
             });
 
             const page = await this.browser.newPage();
-            // User-Agent صفحه را برای جلوگیری از شناسایی شدن، تغییر می‌دهیم.
-            await page.setUserAgent(this.userAgent.toString());
-            await page.setViewport({ width: 1920, height: 1080 });
-            console.log(`✅ ایجنت ${this.agentId}: مرورگر با موفقیت راه‌اندازی شد.`);
+
+            // --- جعل کردن مشخصات مرورگر برای حداکثر ناشناسی ---
+            await page.setUserAgent(this.userAgent);
+            await page.setViewport({ width: 1280, height: 720 });
+
+            // اجرای یک اسکریپت قبل از بارگذاری هر صفحه برای تغییر مشخصات مرورگر
+            await page.evaluateOnNewDocument(() => {
+                // جعل زبان مرورگر
+                Object.defineProperty(navigator, 'language', { get: () => 'en-US' });
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                // جعل پلاگین‌ها
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+                // جعل منطقه زمانی (Timezone)
+                try {
+                    const timezones = ['America/New_York', 'Europe/London', 'Asia/Tokyo', 'Australia/Sydney'];
+                    const randomTz = timezones[Math.floor(Math.random() * timezones.length)];
+                    Intl.DateTimeFormat.prototype.resolvedOptions = function() { return { timeZone: randomTz }; };
+                } catch (e) { /* ignore */ }
+            });
+
+            console.log(`✅ ایجنت ${this.agentId}: مرورگر پیشرفته با موفقیت راه‌اندازی شد.`);
             return page;
         } catch (error) {
             console.error(`❌ ایجنت ${this.agentId}: خطای بحرانی در زمان راه‌اندازی مرورگر: ${error.message}`);
@@ -186,7 +214,7 @@ class TaskExecutor {
     }
 
     /**
-     * فرآیند کامل کار روی یک URL را بر اساس گردش کار جدید انجام می‌دهد.
+     * فرآیند کامل کار روی یک URL را بر اساس گردش کار جدید (با حل کپچا) انجام می‌دهد.
      */
     async _processSingleLink(browserManager, url) {
         const page = await browserManager.start();
@@ -197,50 +225,43 @@ class TaskExecutor {
 
         // مرحله ۲: کلیک اول روی دکمه "برای ادامه اینجا کلیک کنید"
         console.log("--- مرحله ۱: کلیک روی دکمه ادامه ---");
-        if (!await browserManager.click(page, 'button#cntn')) return;
 
-        // منتظر می‌مانیم تا صفحه جدید پس از کلیک بارگذاری شود.
+        // همزمان با کلیک، منتظر باز شدن پاپ‌آپ می‌مانیم
+        const [popup] = await Promise.all([
+            new Promise(resolve => page.once('popup', resolve)),
+            browserManager.click(page, 'button#cntn'),
+        ]);
+
+        if (popup) {
+            console.log("✔️ پاپ‌آپ شناسایی شد. در حال بستن آن...");
+            await popup.close();
+        } else {
+            console.warn("⚠️ پاپ‌آپی پس از کلیک اول باز نشد.");
+        }
+
+        // مرحله ۳: کلیک روی لینک "کپچای ساده"
+        console.log("--- مرحله ۲: کلیک روی لینک 'کپچای ساده' ---");
+        if (!await browserManager.click(page, 'a[href="?capt=def"]')) {
+            console.error("❌ لینک 'کپچای ساده' پیدا نشد.");
+            return;
+        }
+
         try {
             await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
-            console.log("✔️ صفحه جدید با موفقیت بارگذاری شد.");
+            console.log("✔️ صفحه کپچای ساده با موفقیت بارگذاری شد.");
         } catch (error) {
-            console.error("❌ صفحه جدید پس از کلیک اول بارگذاری نشد. احتمالاً لینک خراب است.");
+            console.error("❌ صفحه کپچای ساده بارگذاری نشد.");
             return;
         }
 
-        // مرحله ۳: کلیک دوم روی دکمه کپچا
-        console.log("--- مرحله ۲: کلیک روی دکمه کپچا ---");
-        if (!await browserManager.click(page, 'button#invisibleCaptchaShortlink')) return;
+        // TODO: فاز ۳ و ۴ در اینجا پیاده‌سازی خواهند شد
+        // ۱. فراخوانی ماژول OCR برای حل کپچا
+        // ۲. وارد کردن کد و تلاش مجدد در صورت نیاز
+        // ۳. کلیک نهایی و مدیریت دانلود
 
-        console.log("⏳ ایجنت در حال انتظار (۵ ثانیه) برای بررسی احتمال ظهور کپچای فعال...");
-        await new Promise(res => setTimeout(res, 5000));
+        console.log("--- مراحل OCR و نهایی در فاز بعدی پیاده‌سازی خواهد شد ---");
 
-        // مرحله ۴: بررسی هوشمند کپچا
-        if (await browserManager.checkForCaptcha(page)) {
-            console.log("نتیجه: کپچای فعال شناسایی شد. این لینک رها می‌شود.");
-            return;
-        }
-        console.log("✔️ کپچای فعالی مشاهده نشد. ادامه فرآیند...");
-
-        // مرحله ۵: کلیک نهایی برای دریافت لینک دانلود
-        console.log("--- مرحله ۳: تلاش برای یافتن و کلیک روی لینک نهایی ---");
-        const finalLinkSelector = 'a ::-p-text(دریافت لینک)';
-        try {
-            await page.waitForSelector(finalLinkSelector, { visible: true, timeout: 20000 });
-            // به جای کلیک، آدرس لینک را استخراج می‌کنیم که هدف نهایی است.
-            const downloadLink = await page.$eval(finalLinkSelector, el => el.href);
-            console.log("🎉🎉🎉 لینک نهایی با موفقیت پیدا شد! 🎉🎉🎉");
-            console.log(`🔗 لینک دانلود: ${downloadLink}`);
-
-            // میتوانید اینجا لینک را در یک فایل ذخیره کنید
-            // await fs.appendFile('download_links.txt', downloadLink + '\n');
-
-        } catch (error) {
-            console.error(`❌ لینک نهایی "دریافت لینک" پیدا نشد. ${error.message}`);
-            return;
-        }
-
-        console.log(`✅ ایجنت ${this.agentId}: پردازش URL ${url} با موفقیت کامل شد.`);
+        console.log(`✅ ایجنت ${this.agentId}: پردازش URL ${url} تا مرحله OCR با موفقیت انجام شد.`);
     }
 }
 
