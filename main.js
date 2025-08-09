@@ -3,6 +3,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const UserAgent = require('user-agents');
 const { fetchAndValidateProxies, getNextProxy } = require('./proxyManager');
+const { solveCaptcha } = require('./ocrSolver.js');
 
 // --- کلاس مدیر مرورگر (مبتنی بر Puppeteer) ---
 // این کلاس مسئولیت تمام تعاملات با مرورگر را با قابلیت‌های پیشرفته ناشناس‌سازی بر عهده دارد.
@@ -254,14 +255,71 @@ class TaskExecutor {
             return;
         }
 
-        // TODO: فاز ۳ و ۴ در اینجا پیاده‌سازی خواهند شد
-        // ۱. فراخوانی ماژول OCR برای حل کپچا
-        // ۲. وارد کردن کد و تلاش مجدد در صورت نیاز
-        // ۳. کلیک نهایی و مدیریت دانلود
+        // --- فاز ۳ و ۴: حل کپچا با OCR و تلاش مجدد ---
+        let captchaSolved = false;
+        const maxTries = 3;
+        for (let i = 0; i < maxTries; i++) {
+            console.log(`--- تلاش شماره ${i + 1} برای حل کپچا ---`);
+            const captchaCode = await solveCaptcha(page, 'img#captchaShortlink_captcha_img');
 
-        console.log("--- مراحل OCR و نهایی در فاز بعدی پیاده‌سازی خواهد شد ---");
+            if (captchaCode) {
+                const inputSelector = 'input#captchaShortlink_captcha';
+                await page.type(inputSelector, captchaCode, { delay: 100 });
 
-        console.log(`✅ ایجنت ${this.agentId}: پردازش URL ${url} تا مرحله OCR با موفقیت انجام شد.`);
+                // پس از تایپ کد، فرم را با کلیک روی دکمه یا فشردن Enter ارسال می‌کنیم
+                // در اینجا فرض می‌کنیم دکمه‌ای برای ارسال وجود دارد یا Enter کار می‌کند.
+                await page.keyboard.press('Enter');
+
+                // منتظر نتیجه می‌مانیم. موفقیت یعنی ناوبری به صفحه جدید.
+                try {
+                    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
+                    console.log("✔️ کپچا با موفقیت حل شد! در حال رفتن به صفحه نهایی...");
+                    captchaSolved = true;
+                    break; // خروج از حلقه تلاش مجدد
+                } catch (e) {
+                    console.warn(`⚠️ تلاش شماره ${i + 1} ناموفق بود. احتمالاً کد کپچا اشتباه است.`);
+                    // صفحه ممکن است رفرش شود یا همانجا بماند، حلقه ادامه پیدا می‌کند.
+                }
+            } else {
+                console.warn("⚠️ ماژول OCR نتوانست کدی را از تصویر استخراج کند.");
+            }
+
+            // اگر آخرین تلاش هم ناموفق بود
+            if (i === maxTries - 1) {
+                console.error("❌ پس از چندین بار تلاش، حل کپچا ناموفق بود. این لینک رها می‌شود.");
+                return;
+            }
+        }
+
+        if (!captchaSolved) return; // اگر به هر دلیلی کپچا حل نشد، خارج شو
+
+        // مرحله ۵: کلیک نهایی برای دریافت لینک دانلود
+        console.log("--- مرحله نهایی: تلاش برای یافتن و کلیک روی لینک دانلود ---");
+        const finalButtonSelector = 'button.get-link';
+        try {
+            await page.waitForSelector(finalButtonSelector, { visible: true, timeout: 20000 });
+
+            // همزمان با کلیک، منتظر باز شدن تب جدید می‌مانیم
+            const [newTarget] = await Promise.all([
+                new Promise(resolve => browserManager.browser.once('targetcreated', resolve)),
+                page.click(finalButtonSelector),
+            ]);
+
+            const newPage = await newTarget.page();
+            if (newPage) {
+                console.log("✔️ تب جدید برای دانلود باز شد. در حال بستن آن...");
+                // برای جلوگیری از دانلود واقعی، تب را به سرعت می‌بندیم.
+                await newPage.close();
+            }
+
+            // در اینجا می‌توان لینک را از newPage.url() استخراج کرد اگر نیاز باشد.
+            // const downloadLink = newPage.url();
+            console.log("🎉🎉🎉 فرآیند با موفقیت به پایان رسید! 🎉🎉🎉");
+
+        } catch (error) {
+            console.error(`❌ دکمه نهایی "دریافت لینک" پیدا نشد. ${error.message}`);
+            return;
+        }
     }
 }
 
