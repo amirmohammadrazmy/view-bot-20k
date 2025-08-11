@@ -2,8 +2,8 @@ const axios = require('axios');
 const puppeteer = require('puppeteer'); // Still needed for type definitions if we use them
 const { URL } = require('url');
 
-// آدرس لیست پراکسی جدید از گیت‌هاب (HTTP proxies)
-const PROXY_LIST_URL = "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/countries/US/data.txt";
+// آدرس لیست پراکسی جدید از گیت‌هاب
+const PROXY_LIST_URL = "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/countries/US/data.txt";
 
 // آدرسی که برای تست سلامت پراکسی‌ها استفاده می‌شود.
 const VALIDATION_URL = "https://2ad.ir/";
@@ -14,21 +14,41 @@ let proxyCache = [];
 let proxyIndex = 0;
 
 /**
- * یک پراکسی HTTP را با استفاده از axios تست می‌کند. این روش سریع و بهینه است.
+ * یک پراکسی را با استفاده از Puppeteer تست می‌کند. این روش برای انواع پراکسی (HTTP, SOCKS4, SOCKS5) کار می‌کند.
  */
 async function validateProxy(proxy) {
+    let browser = null;
     try {
-        const proxyUrl = new URL(proxy);
-        await axios.head(VALIDATION_URL, {
-            proxy: {
-                protocol: 'http',
-                host: proxyUrl.hostname,
-                port: parseInt(proxyUrl.port),
-            },
+        // یک نمونه مرورگر بسیار سبک و سریع برای تست راه‌اندازی می‌کنیم.
+        browser = await puppeteer.launch({
+            headless: true,
+            args: [
+                `--proxy-server=${proxy}`,
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--ignore-certificate-errors',
+            ],
+            // برای بهینه‌سازی، تنها یک صفحه خالی را باز می‌کنیم
+            defaultViewport: null,
+        });
+        const page = await browser.newPage();
+
+        // تلاش برای رفتن به یک سایت ساده جهت تست اتصال
+        await page.goto(VALIDATION_URL, {
+            waitUntil: 'domcontentloaded',
             timeout: VALIDATION_TIMEOUT,
         });
+
+        // اگر پراکسی کار کند، آن را برمی‌گردانیم
+        console.log(`✔️ پراکسی ${proxy} سالم است.`);
+        await browser.close();
         return proxy;
+
     } catch (error) {
+        // برای جلوگیری از لاگ‌های اضافی، خطای پراکسی‌های ناموفق را نمایش نمی‌دهیم
+        if (browser) {
+            await browser.close();
+        }
         return null;
     }
 }
@@ -37,7 +57,7 @@ async function validateProxy(proxy) {
  * پراکسی‌ها را از لیست گیت‌هاب دریافت کرده، آن‌ها را تست می‌کند و سالم‌ها را ذخیره می‌نماید.
  */
 async function fetchAndValidateProxies() {
-    console.log(`⏳ در حال دریافت لیست پراکسی‌های HTTP از گیت‌هاب...`);
+    console.log(`⏳ در حال دریافت لیست پراکسی از گیت‌هاب...`);
     try {
         const response = await axios.get(PROXY_LIST_URL, { timeout: 20000 });
         const rawProxies = response.data.trim().split('\n').filter(p => p.trim());
@@ -47,12 +67,10 @@ async function fetchAndValidateProxies() {
             return;
         }
 
-        // پراکسی‌ها را با پروتکل صحیح فرمت می‌کنیم
-        const formattedProxies = rawProxies.map(p => `http://${p.trim()}`);
-        console.log(`✔️ تعداد ${formattedProxies.length} پراکسی خام دریافت شد. شروع به تست سلامت...`);
+        console.log(`✔️ تعداد ${rawProxies.length} پراکسی خام دریافت شد. شروع به تست سلامت...`);
 
         // تست کردن تمام پراکسی‌ها به صورت موازی برای افزایش سرعت
-        const validationPromises = formattedProxies.map(validateProxy);
+        const validationPromises = rawProxies.map(validateProxy);
         const results = await Promise.all(validationPromises);
         const healthyProxies = results.filter(p => p !== null);
 
