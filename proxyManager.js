@@ -1,20 +1,22 @@
 const axios = require('axios');
-const puppeteer = require('puppeteer'); // Still needed for type definitions if we use them
 const { URL } = require('url');
 
-// آدرس لیست پراکسی جدید از گیت‌هاب (HTTP proxies)
+// Final proxy source: A list of HTTP proxies from GitHub
 const PROXY_LIST_URL = "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/countries/US/data.txt";
 
-// آدرسی که برای تست سلامت پراکسی‌ها استفاده می‌شود.
+// URL for health-checking the proxies
 const VALIDATION_URL = "https://2ad.ir/";
-const VALIDATION_TIMEOUT = 10000; // 10 ثانیه
+const VALIDATION_TIMEOUT = 10000; // 10 seconds
 
-// لیست موقت برای نگهداری پراکسی‌های سالم و تست‌شده.
+// In-memory cache for healthy, validated proxies
 let proxyCache = [];
 let proxyIndex = 0;
 
 /**
- * یک پراکسی HTTP را با استفاده از axios تست می‌کند. این روش سریع و بهینه است.
+ * Validates a single HTTP proxy by making a HEAD request to the validation URL.
+ * This is a fast and efficient method for checking HTTP proxies.
+ * @param {string} proxy - The proxy to validate, in http://ip:port format.
+ * @returns {Promise<string|null>} The proxy string if healthy, otherwise null.
  */
 async function validateProxy(proxy) {
     try {
@@ -34,49 +36,49 @@ async function validateProxy(proxy) {
 }
 
 /**
- * پراکسی‌ها را از لیست گیت‌هاب دریافت کرده، آن‌ها را تست می‌کند و سالم‌ها را ذخیره می‌نماید.
+ * Fetches the list of proxies from the GitHub source, validates them concurrently,
+ * and populates the cache with healthy proxies.
  */
 async function fetchAndValidateProxies() {
-    console.log(`⏳ در حال دریافت لیست پراکسی‌های HTTP از گیت‌هاب...`);
+    console.log(`⏳ Fetching HTTP proxy list from GitHub...`);
     try {
         const response = await axios.get(PROXY_LIST_URL, { timeout: 20000 });
         const rawProxies = response.data.trim().split('\n').filter(p => p.trim());
 
         if (rawProxies.length === 0) {
-            console.warn("⚠️ لیست پراکسی دریافت شده از گیت‌هاب خالی است.");
+            console.warn("⚠️ The proxy list downloaded from GitHub is empty.");
             return;
         }
 
-        // پراکسی‌ها را با پروتکل صحیح فرمت می‌کنیم
         const formattedProxies = rawProxies.map(p => `http://${p.trim()}`);
-        console.log(`✔️ تعداد ${formattedProxies.length} پراکسی خام دریافت شد. شروع به تست سلامت...`);
+        console.log(`✔️ Found ${formattedProxies.length} raw proxies. Starting validation...`);
 
-        // تست کردن تمام پراکسی‌ها به صورت موازی برای افزایش سرعت
         const validationPromises = formattedProxies.map(validateProxy);
         const results = await Promise.all(validationPromises);
         const healthyProxies = results.filter(p => p !== null);
 
         if (healthyProxies.length === 0) {
-            console.error("❌ هیچکدام از پراکسی‌های لیست، تست سلامت را پاس نکردند.");
+            console.error("❌ None of the downloaded proxies passed the validation test.");
             return;
         }
 
         proxyCache = healthyProxies;
         proxyIndex = 0;
-        proxyCache.sort(() => Math.random() - 0.5); // Shuffle
-        console.log(`✅ تست کامل شد. تعداد ${proxyCache.length} پراکسی سالم و آماده استفاده است.`);
+        proxyCache.sort(() => Math.random() - 0.5); // Shuffle for randomness
+        console.log(`✅ Validation complete. ${proxyCache.length} healthy proxies are ready.`);
 
     } catch (error) {
-        console.error(`❌ خطای فاجعه‌بار هنگام دریافت و تست پراکسی‌ها از گیت‌هاب: ${error.message}`);
+        console.error(`❌ A critical error occurred while fetching/validating proxies: ${error.message}`);
     }
 }
 
 /**
- * یک پراکسی سالم از لیست ذخیره شده برمی‌گرداند.
+ * Returns the next healthy proxy from the cache in a round-robin fashion.
+ * @returns {string|null} A healthy proxy string, or null if the cache is empty.
  */
 function getNextProxy() {
     if (proxyCache.length === 0) {
-        console.warn("⚠️ مخزن پراکسی خالی است. از اتصال مستقیم استفاده خواهد شد.");
+        console.warn("⚠️ Proxy cache is empty. Proceeding with a direct connection.");
         return null;
     }
     const proxy = proxyCache[proxyIndex];
@@ -84,14 +86,7 @@ function getNextProxy() {
     return proxy;
 }
 
-// برای سازگاری با main.js، تابع اصلی را دوباره تعریف می‌کنیم
-// و منطق را به سمت دریافت پراکسی در لحظه نیاز، تغییر می‌دهیم.
-async function getAndValidateSingleProxy(maxRetries = 10) {
-    console.log("این تابع دیگر استفاده نمی‌شود. پراکسی‌ها در ابتدا بارگذاری می‌شوند.");
-    return getNextProxy();
-}
-
 module.exports = {
-    fetchAndValidateProxies, // تابع اصلی ما اکنون این است
+    fetchAndValidateProxies,
     getNextProxy,
 };

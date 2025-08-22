@@ -1,31 +1,7 @@
-# This configuration tells Railway how to build and deploy the project.
-# It defines 4 separate services, one for each agent.
-
 [build]
-# All services will use the same Dockerfile to build the environment.
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# This is a global deployment setting. Services will restart if they fail.
+startCommand = "python main.py"
 restartPolicyType = "ON_FAILURE"
-
-# Define the first agent as a service.
-[[services]]
-name = "agent-1"
-startCommand = "node main.js --agent-id 1"
-
-# Define the second agent as a service.
-[[services]]
-name = "agent-2"
-startCommand = "node main.js --agent-id 2"
-
-# Define the third agent as a service.
-[[services]]
-name = "agent-3"
-startCommand = "node main.js --agent-id 3"
-
-# Define the fourth agent as a service.
-[[services]]
-name = "agent-4"
-startCommand = "node main.js --agent-id 4"

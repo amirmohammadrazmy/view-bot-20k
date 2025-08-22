@@ -1,7 +1,7 @@
 {
-  "name": "view-bot-js",
-  "version": "1.0.0",
-  "description": "A web automation bot rewritten in Node.js and Puppeteer.",
+  "name": "view-bot-final",
+  "version": "2.0.0",
+  "description": "A sophisticated web automation bot with OCR capabilities, written in Node.js.",
   "main": "main.js",
   "scripts": {
     "start": "node main.js"
@@ -9,9 +9,10 @@
   "keywords": [
     "puppeteer",
     "automation",
-    "bot"
+    "bot",
+    "ocr"
   ],
-  "author": "",
+  "author": "Jules",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.7.2",

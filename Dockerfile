@@ -4,47 +4,46 @@ FROM node:18-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# Puppeteer requires some specific dependencies to run in a Debian environment.
-# This command installs them, including the Chromium browser itself.
+# Install system dependencies for Puppeteer and Tesseract, including Chromium
 RUN apt-get update && apt-get install -y \
     chromium-browser \
-    ca-certificates \
-    fonts-liberation \
-    libappindicator3-1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libc6 \
-    libcairo2 \
-    libcups2 \
-    libdbus-1-3 \
-    libexpat1 \
-    libfontconfig1 \
-    libgbm1 \
-    libgcc1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libstdc++6 \
-    libx11-6 \
-    libx11-xcb1 \
-    libxcb1 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxi6 \
-    libxrandr2 \
-    libxrender1 \
-    libxss1 \
     libxtst6 \
-    lsb-release \
+    libxss1 \
+    libxrender1 \
+    libxrandr2 \
+    libxi6 \
+    libxfixes3 \
+    libxext6 \
+    libxdamage1 \
+    libxcursor1 \
+    libxcomposite1 \
+    libxcb1 \
+    libx11-xcb1 \
+    libx11-6 \
+    libstdc++6 \
+    libpangocairo-1.0-0 \
+    libpango-1.0-0 \
+    libnss3 \
+    libnspr4 \
+    libgtk-3-0 \
+    libglib2.0-0 \
+    libgcc1 \
+    libgbm1 \
+    libfontconfig1 \
+    libexpat1 \
+    libdbus-1-3 \
+    libcups2 \
+    libcairo2 \
+    libc6 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libasound2 \
+    libappindicator3-1 \
+    fonts-liberation \
+    ca-certificates \
     wget \
     xdg-utils \
+    tesseract-ocr \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
@@ -52,9 +51,7 @@ RUN apt-get update && apt-get install -y \
 COPY package*.json ./
 
 # Install app dependencies.
-# We use `npm install` here because it generates a `package-lock.json` if one doesn't exist.
-# `npm ci` would fail in this case.
-RUN npm install
+RUN npm install --omit=dev
 
 # Bundle app source
 COPY . .

@@ -25,7 +25,7 @@ class BrowserManager {
      */
     async start() {
         try {
-            console.log(`⏳ ایجنت ${this.agentId}: در حال راه‌اندازی مرورگر پیشرفته Puppeteer...`);
+            console.log(`⏳ ایجنت ${this.agentId}: در حال راه‌اندازی مرورگر پیشرفته...`);
 
             const args = [
                 '--no-sandbox',
@@ -44,24 +44,18 @@ class BrowserManager {
                 executablePath: '/usr/bin/chromium-browser',
                 headless: true,
                 args: args,
-                // غیرفعال کردن برخی ویژگی‌های اتوماسیون که توسط سایت‌ها قابل شناسایی است
                 ignoreDefaultArgs: ['--enable-automation'],
             });
 
             const page = await this.browser.newPage();
 
-            // --- جعل کردن مشخصات مرورگر برای حداکثر ناشناسی ---
             await page.setUserAgent(this.userAgent);
             await page.setViewport({ width: 1280, height: 720 });
 
-            // اجرای یک اسکریپت قبل از بارگذاری هر صفحه برای تغییر مشخصات مرورگر
             await page.evaluateOnNewDocument(() => {
-                // جعل زبان مرورگر
                 Object.defineProperty(navigator, 'language', { get: () => 'en-US' });
                 Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-                // جعل پلاگین‌ها
                 Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-                // جعل منطقه زمانی (Timezone)
                 try {
                     const timezones = ['America/New_York', 'Europe/London', 'Asia/Tokyo', 'Australia/Sydney'];
                     const randomTz = timezones[Math.floor(Math.random() * timezones.length)];
@@ -80,7 +74,6 @@ class BrowserManager {
 
     /**
      * به یک URL جدید می‌رود.
-     * @returns {Promise<boolean>} موفقیت یا شکست.
      */
     async navigate(page, url) {
         console.log(`⏳ ایجنت ${this.agentId}: در حال ناوبری به آدرس: ${url}`);
@@ -96,7 +89,6 @@ class BrowserManager {
 
     /**
      * روی یک عنصر در صفحه کلیک می‌کند.
-     * @returns {Promise<boolean>} موفقیت یا شکست.
      */
     async click(page, selector, timeout = 15000) {
         console.log(`⏳ ایجنت ${this.agentId}: در حال تلاش برای کلیک روی عنصر: '${selector}'`);
@@ -109,28 +101,6 @@ class BrowserManager {
             console.error(`❌ ایجنت ${this.agentId}: خطای کلیک روی '${selector}': ${error.message}`);
             return false;
         }
-    }
-
-    /**
-     * بررسی می‌کند که آیا کپچا در صفحه وجود دارد یا خیر.
-     * @returns {Promise<boolean>}
-     */
-    async checkForCaptcha(page) {
-        console.log(`🕵️ ایجنت ${this.agentId}: در حال بررسی صفحه برای شناسایی کپچا...`);
-        const captchaSelectors = [
-            'iframe[src*="recaptcha"]',
-            'iframe[src*="hcaptcha"]',
-            'div#cf-turnstile',
-            'div.g-recaptcha',
-        ];
-        for (const selector of captchaSelectors) {
-            const element = await page.$(selector);
-            if (element) {
-                console.log(`⚠️ ایجنت ${this.agentId}: کپچا با انتخابگر '${selector}' شناسایی شد!`);
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
@@ -169,9 +139,7 @@ class TaskExecutor {
             console.log(`\n--- شروع پردازش لینک ${i + 1} از ${links.length} ---`);
             console.log(`🔗 ایجنت ${this.agentId}: در حال پردازش URL: ${url}`);
 
-            // از لیست پراکسی‌های سالمی که در ابتدا دریافت شد، به نوبت استفاده می‌کنیم.
             const proxy = getNextProxy();
-
             const bm = new BrowserManager(this.agentId, proxy);
 
             try {
@@ -180,7 +148,6 @@ class TaskExecutor {
                 console.error(`🔥 خطای فاجعه‌بار برای ایجنت ${this.agentId} در URL ${url}: ${error.message}`);
             } finally {
                 await bm.shutdown();
-                // یک وقفه کوتاه و تصادفی (بین ۱ تا ۲.۵ ثانیه) برای جلوگیری از شناسایی شدن.
                 const sleepTime = Math.random() * 1.5 + 1;
                 console.log(`--- پایان پردازش لینک. استراحت برای ${sleepTime.toFixed(2)} ثانیه ---`);
                 await new Promise(res => setTimeout(res, sleepTime * 1000));
@@ -216,26 +183,21 @@ class TaskExecutor {
         const page = await browserManager.start();
         if (!page) return;
 
-        // مرحله ۱: ناوبری اولیه
         if (!await browserManager.navigate(page, url)) return;
 
-        // مرحله ۲: کلیک اول روی دکمه "برای ادامه اینجا کلیک کنید"
         console.log("--- مرحله ۱: کلیک روی دکمه ادامه ---");
-
-        // همزمان با کلیک، منتظر باز شدن پاپ‌آپ می‌مانیم
         const [popup] = await Promise.all([
             new Promise(resolve => page.once('popup', resolve)),
             browserManager.click(page, 'button#cntn'),
-        ]);
+        ]).catch(() => [null]);
 
         if (popup) {
             console.log("✔️ پاپ‌آپ شناسایی شد. در حال بستن آن...");
             await popup.close();
         } else {
-            console.warn("⚠️ پاپ‌آپی پس از کلیک اول باز نشد.");
+            console.warn("⚠️ پاپ‌آپی پس از کلیک اول باز نشد یا خطایی رخ داد.");
         }
 
-        // مرحله ۳: کلیک روی لینک "کپچای ساده"
         console.log("--- مرحله ۲: کلیک روی لینک 'کپچای ساده' ---");
         if (!await browserManager.click(page, 'a[href="?capt=def"]')) {
             console.error("❌ لینک 'کپچای ساده' پیدا نشد.");
@@ -250,7 +212,6 @@ class TaskExecutor {
             return;
         }
 
-        // --- فاز ۳ و ۴: حل کپچا با OCR و تلاش مجدد ---
         let captchaSolved = false;
         const maxTries = 3;
         for (let i = 0; i < maxTries; i++) {
@@ -260,73 +221,57 @@ class TaskExecutor {
             if (captchaCode) {
                 const inputSelector = 'input#captchaShortlink_captcha';
                 await page.type(inputSelector, captchaCode, { delay: 100 });
-
-                // پس از تایپ کد، فرم را با کلیک روی دکمه یا فشردن Enter ارسال می‌کنیم
-                // در اینجا فرض می‌کنیم دکمه‌ای برای ارسال وجود دارد یا Enter کار می‌کند.
                 await page.keyboard.press('Enter');
 
-                // منتظر نتیجه می‌مانیم. موفقیت یعنی ناوبری به صفحه جدید.
                 try {
                     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
                     console.log("✔️ کپچا با موفقیت حل شد! در حال رفتن به صفحه نهایی...");
                     captchaSolved = true;
-                    break; // خروج از حلقه تلاش مجدد
+                    break;
                 } catch (e) {
                     console.warn(`⚠️ تلاش شماره ${i + 1} ناموفق بود. احتمالاً کد کپچا اشتباه است.`);
-                    // صفحه ممکن است رفرش شود یا همانجا بماند، حلقه ادامه پیدا می‌کند.
                 }
             } else {
                 console.warn("⚠️ ماژول OCR نتوانست کدی را از تصویر استخراج کند.");
             }
 
-            // اگر آخرین تلاش هم ناموفق بود
             if (i === maxTries - 1) {
                 console.error("❌ پس از چندین بار تلاش، حل کپچا ناموفق بود. این لینک رها می‌شود.");
                 return;
             }
         }
 
-        if (!captchaSolved) return; // اگر به هر دلیلی کپچا حل نشد، خارج شو
+        if (!captchaSolved) return;
 
-        // مرحله ۵: کلیک نهایی برای دریافت لینک دانلود
         console.log("--- مرحله نهایی: تلاش برای یافتن و کلیک روی لینک دانلود ---");
         const finalButtonSelector = 'button.get-link';
         try {
-            await page.waitForSelector(finalButtonSelector, { visible: true, timeout: 20000 });
-
-            // همزمان با کلیک، منتظر باز شدن تب جدید می‌مانیم
             const [newTarget] = await Promise.all([
                 new Promise(resolve => browserManager.browser.once('targetcreated', resolve)),
-                page.click(finalButtonSelector),
+                browserManager.click(page, finalButtonSelector, 20000),
             ]);
 
             const newPage = await newTarget.page();
             if (newPage) {
                 console.log("✔️ تب جدید برای دانلود باز شد. در حال بستن آن...");
-                // برای جلوگیری از دانلود واقعی، تب را به سرعت می‌بندیم.
                 await newPage.close();
             }
 
-            // در اینجا می‌توان لینک را از newPage.url() استخراج کرد اگر نیاز باشد.
-            // const downloadLink = newPage.url();
             console.log("🎉🎉🎉 فرآیند با موفقیت به پایان رسید! 🎉🎉🎉");
 
         } catch (error) {
             console.error(`❌ دکمه نهایی "دریافت لینک" پیدا نشد. ${error.message}`);
-            return;
         }
     }
 }
 
 // --- نقطه شروع اصلی برنامه ---
 async function main() {
-    // خواندن ID ایجنت از آرگومان‌های خط فرمان
     const args = process.argv.slice(2);
     const agentIdArg = args.find(arg => arg.startsWith('--agent-id='));
     const agentId = agentIdArg ? parseInt(agentIdArg.split('=')[1]) : (process.env.AGENT_ID || 1);
 
-    // در ابتدای برنامه، یک بار پراکسی‌ها را از منبع جدید دریافت و تست می‌کنیم.
-    console.log("--- شروع فرآیند دریافت و تست پراکسی‌ها از منبع جدید ---");
+    console.log("--- شروع فرآیند دریافت و تست پراکسی‌ها ---");
     await fetchAndValidateProxies();
 
     const executor = new TaskExecutor(agentId);
