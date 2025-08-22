@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const fs = require('fs/promises');
 const path = require('path');
 const UserAgent = require('user-agents');
@@ -41,6 +41,7 @@ class BrowserManager {
             }
 
             this.browser = await puppeteer.launch({
+                executablePath: '/usr/bin/chromium-browser',
                 headless: true,
                 args: args,
                 // غیرفعال کردن برخی ویژگی‌های اتوماسیون که توسط سایت‌ها قابل شناسایی است

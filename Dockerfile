@@ -5,8 +5,9 @@ FROM node:18-slim
 WORKDIR /app
 
 # Puppeteer requires some specific dependencies to run in a Debian environment.
-# This command installs them.
+# This command installs them, including the Chromium browser itself.
 RUN apt-get update && apt-get install -y \
+    chromium-browser \
     ca-certificates \
     fonts-liberation \
     libappindicator3-1 \
