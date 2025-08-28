@@ -2,7 +2,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs/promises');
 const path = require('path');
 const UserAgent = require('user-agents');
-const { fetchAndValidateProxies, getNextProxy } = require('./proxyManager');
+const { fetchProxies, getNextProxy } = require('./proxyManager');
 const { solveCaptcha } = require('./ocrSolver.js');
 
 // --- کلاس مدیر مرورگر (مبتنی بر Puppeteer) ---
@@ -168,8 +168,8 @@ class TaskExecutor {
             console.log(`\n--- شروع پردازش لینک ${i + 1} از ${links.length} ---`);
             console.log(`🔗 ایجنت ${this.agentId}: در حال پردازش URL: ${url}`);
 
-            // از لیست پراکسی‌های سالمی که در ابتدا دریافت شد، به نوبت استفاده می‌کنیم.
-            const proxy = getNextProxy();
+            // یک پراکسی سالم و تست‌شده در لحظه دریافت می‌کنیم
+            const proxy = await getNextProxy();
 
             const bm = new BrowserManager(this.agentId, proxy);
 
@@ -324,9 +324,9 @@ async function main() {
     const agentIdArg = args.find(arg => arg.startsWith('--agent-id='));
     const agentId = agentIdArg ? parseInt(agentIdArg.split('=')[1]) : (process.env.AGENT_ID || 1);
 
-    // در ابتدای برنامه، یک بار پراکسی‌ها را از منبع جدید دریافت و تست می‌کنیم.
-    console.log("--- شروع فرآیند دریافت و تست پراکسی‌ها از منبع جدید ---");
-    await fetchAndValidateProxies();
+    // در ابتدای برنامه، صف پراکسی‌ها را از منبع دریافت می‌کنیم.
+    console.log("--- شروع فرآیند دریافت صف پراکسی‌ها ---");
+    await fetchProxies();
 
     const executor = new TaskExecutor(agentId);
     await executor.runDailyTasks();
