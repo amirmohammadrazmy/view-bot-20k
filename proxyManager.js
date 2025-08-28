@@ -1,91 +1,44 @@
-const axios = require('axios');
-const puppeteer = require('puppeteer'); // Still needed for type definitions if we use them
-const { URL } = require('url');
+const Proxifly = require('proxifly');
 
-// آدرس لیست پراکسی جدید از گیت‌هاب
-const PROXY_LIST_URL = "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/countries/US/data.txt";
-
-// آدرسی که برای تست سلامت پراکسی‌ها استفاده می‌شود.
-const VALIDATION_URL = "https://2ad.ir/";
-const VALIDATION_TIMEOUT = 10000; // 10 ثانیه
+// مقداردهی اولیه کلاینت پراکسی‌فلای
+// نیازی به کلید API برای استفاده رایگان نیست
+const proxifly = new Proxifly();
 
 // لیست موقت برای نگهداری پراکسی‌های سالم و تست‌شده.
 let proxyCache = [];
 let proxyIndex = 0;
 
 /**
- * یک پراکسی را با استفاده از Puppeteer تست می‌کند. این روش برای انواع پراکسی (HTTP, SOCKS4, SOCKS5) کار می‌کند.
- */
-async function validateProxy(proxy) {
-    let browser = null;
-    try {
-        // یک نمونه مرورگر بسیار سبک و سریع برای تست راه‌اندازی می‌کنیم.
-        browser = await puppeteer.launch({
-            headless: true,
-            args: [
-                `--proxy-server=${proxy}`,
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--ignore-certificate-errors',
-            ],
-            // برای بهینه‌سازی، تنها یک صفحه خالی را باز می‌کنیم
-            defaultViewport: null,
-        });
-        const page = await browser.newPage();
-
-        // تلاش برای رفتن به یک سایت ساده جهت تست اتصال
-        await page.goto(VALIDATION_URL, {
-            waitUntil: 'domcontentloaded',
-            timeout: VALIDATION_TIMEOUT,
-        });
-
-        // اگر پراکسی کار کند، آن را برمی‌گردانیم
-        console.log(`✔️ پراکسی ${proxy} سالم است.`);
-        await browser.close();
-        return proxy;
-
-    } catch (error) {
-        // برای جلوگیری از لاگ‌های اضافی، خطای پراکسی‌های ناموفق را نمایش نمی‌دهیم
-        if (browser) {
-            await browser.close();
-        }
-        return null;
-    }
-}
-
-/**
- * پراکسی‌ها را از لیست گیت‌هاب دریافت کرده، آن‌ها را تست می‌کند و سالم‌ها را ذخیره می‌نماید.
+ * پراکسی‌های سالم را با استفاده از ماژول `proxifly` دریافت و در حافظه موقت ذخیره می‌کند.
+ * این روش بسیار بهینه‌تر است زیرا پراکسی‌ها قبلاً توسط سرویس تست شده‌اند.
  */
 async function fetchAndValidateProxies() {
-    console.log(`⏳ در حال دریافت لیست پراکسی از گیت‌هاب...`);
+    console.log(`⏳ در حال دریافت پراکسی‌های سالم از سرویس Proxifly...`);
     try {
-        const response = await axios.get(PROXY_LIST_URL, { timeout: 20000 });
-        const rawProxies = response.data.trim().split('\n').filter(p => p.trim());
+        const options = {
+            country: 'US',   // دریافت پراکسی فقط از آمریکا
+            quantity: 100,   // درخواست ۱۰۰ پراکسی سالم
+            format: 'text',  // فرمت خروجی: protocol://ip:port
+        };
 
-        if (rawProxies.length === 0) {
-            console.warn("⚠️ لیست پراکسی دریافت شده از گیت‌هاب خالی است.");
-            return;
-        }
+        const healthyProxies = await proxifly.getProxy(options);
 
-        console.log(`✔️ تعداد ${rawProxies.length} پراکسی خام دریافت شد. شروع به تست سلامت...`);
-
-        // تست کردن تمام پراکسی‌ها به صورت موازی برای افزایش سرعت
-        const validationPromises = rawProxies.map(validateProxy);
-        const results = await Promise.all(validationPromises);
-        const healthyProxies = results.filter(p => p !== null);
-
-        if (healthyProxies.length === 0) {
-            console.error("❌ هیچکدام از پراکسی‌های لیست، تست سلامت را پاس نکردند.");
+        if (!healthyProxies || healthyProxies.length === 0) {
+            console.error("❌ سرویس Proxifly هیچ پراکسی سالمی برنگرداند.");
             return;
         }
 
         proxyCache = healthyProxies;
         proxyIndex = 0;
-        proxyCache.sort(() => Math.random() - 0.5); // Shuffle
-        console.log(`✅ تست کامل شد. تعداد ${proxyCache.length} پراکسی سالم و آماده استفاده است.`);
+        // پراکسی‌ها را به صورت تصادفی مرتب می‌کنیم تا هر بار از پراکسی‌های متفاوتی استفاده شود
+        proxyCache.sort(() => Math.random() - 0.5);
+
+        console.log(`✅ تعداد ${proxyCache.length} پراکسی سالم و تست‌شده با موفقیت از Proxifly دریافت شد.`);
 
     } catch (error) {
-        console.error(`❌ خطای فاجعه‌بار هنگام دریافت و تست پراکسی‌ها از گیت‌هاب: ${error.message}`);
+        console.error(`❌ خطای فاجعه‌بار هنگام دریافت پراکسی از Proxifly: ${error.message}`);
+        // در صورت خطا، سعی می‌کنیم از فایل پشتیبان محلی استفاده کنیم (اگر وجود داشته باشد)
+        // این بخش می‌تواند در آینده برای پایداری بیشتر اضافه شود.
     }
 }
 
