@@ -1,44 +1,39 @@
-const Proxifly = require('proxifly');
+const axios = require('axios');
 
-// مقداردهی اولیه کلاینت پراکسی‌فلای
-// نیازی به کلید API برای استفاده رایگان نیست
-const proxifly = new Proxifly();
+// URL مستقیم به فایل JSON پراکسی‌های آمریکا
+const PROXY_JSON_URL = "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/countries/US/data.json";
 
-// لیست موقت برای نگهداری پراکسی‌های سالم و تست‌شده.
+// لیست موقت برای نگهداری پراکسی‌های سالم.
 let proxyCache = [];
 let proxyIndex = 0;
 
 /**
- * پراکسی‌های سالم را با استفاده از ماژول `proxifly` دریافت و در حافظه موقت ذخیره می‌کند.
- * این روش بسیار بهینه‌تر است زیرا پراکسی‌ها قبلاً توسط سرویس تست شده‌اند.
+ * پراکسی‌ها را مستقیماً از فایل JSON دریافت کرده و در حافظه موقت ذخیره می‌کند.
+ * این روش سریع و قابل اعتماد است و نیازی به تست مجدد پراکسی‌ها ندارد.
  */
 async function fetchAndValidateProxies() {
-    console.log(`⏳ در حال دریافت پراکسی‌های سالم از سرویس Proxifly...`);
+    console.log(`⏳ در حال دریافت لیست پراکسی از فایل JSON...`);
     try {
-        const options = {
-            country: 'US',   // دریافت پراکسی فقط از آمریکا
-            quantity: 100,   // درخواست ۱۰۰ پراکسی سالم
-            format: 'text',  // فرمت خروجی: protocol://ip:port
-        };
+        const response = await axios.get(PROXY_JSON_URL, { timeout: 20000 });
+        const proxyData = response.data;
 
-        const healthyProxies = await proxifly.getProxy(options);
-
-        if (!healthyProxies || healthyProxies.length === 0) {
-            console.error("❌ سرویس Proxifly هیچ پراکسی سالمی برنگرداند.");
+        if (!proxyData || !Array.isArray(proxyData) || proxyData.length === 0) {
+            console.error("❌ فایل JSON پراکسی دریافت نشد یا خالی است.");
             return;
         }
 
+        // استخراج رشته کامل پراکسی از هر آبجکت در آرایه JSON
+        const healthyProxies = proxyData.map(item => item.proxy);
+
         proxyCache = healthyProxies;
         proxyIndex = 0;
-        // پراکسی‌ها را به صورت تصادفی مرتب می‌کنیم تا هر بار از پراکسی‌های متفاوتی استفاده شود
+        // پراکسی‌ها را به صورت تصادفی مرتب می‌کنیم
         proxyCache.sort(() => Math.random() - 0.5);
 
-        console.log(`✅ تعداد ${proxyCache.length} پراکسی سالم و تست‌شده با موفقیت از Proxifly دریافت شد.`);
+        console.log(`✅ تعداد ${proxyCache.length} پراکسی با موفقیت از فایل JSON دریافت شد.`);
 
     } catch (error) {
-        console.error(`❌ خطای فاجعه‌بار هنگام دریافت پراکسی از Proxifly: ${error.message}`);
-        // در صورت خطا، سعی می‌کنیم از فایل پشتیبان محلی استفاده کنیم (اگر وجود داشته باشد)
-        // این بخش می‌تواند در آینده برای پایداری بیشتر اضافه شود.
+        console.error(`❌ خطای فاجعه‌بار هنگام دریافت و پردازش فایل JSON پراکسی:`, error);
     }
 }
 
@@ -55,14 +50,13 @@ function getNextProxy() {
     return proxy;
 }
 
-// برای سازگاری با main.js، تابع اصلی را دوباره تعریف می‌کنیم
-// و منطق را به سمت دریافت پراکسی در لحظه نیاز، تغییر می‌دهیم.
+// این تابع دیگر استفاده نمی‌شود اما برای سازگاری باقی می‌ماند
 async function getAndValidateSingleProxy(maxRetries = 10) {
     console.log("این تابع دیگر استفاده نمی‌شود. پراکسی‌ها در ابتدا بارگذاری می‌شوند.");
     return getNextProxy();
 }
 
 module.exports = {
-    fetchAndValidateProxies, // تابع اصلی ما اکنون این است
+    fetchAndValidateProxies,
     getNextProxy,
 };
